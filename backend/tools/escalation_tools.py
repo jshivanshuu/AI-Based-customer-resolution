@@ -1,25 +1,18 @@
-import uuid
-from typing import Dict, Any, List, Optional
-from datetime import datetime, timezone
+from langchain_core.tools import tool
 
-ESCALATION_QUEUE: List[Dict[str, Any]] = []
 
-def trigger_escalation(customer_id: str, reason: str, metadata: Optional[str] = None) -> Dict[str, Any]:
+@tool
+def escalate_to_human(
+    pnr: str,
+    reason: str
+):
     """
-    Creates an urgent supervisor escalation ticket.
+    Escalate a customer request to human support.
     """
-    escalation_id = f"ESC-{uuid.uuid4().hex[:6].upper()}"
-    ticket = {
-        "escalation_id": escalation_id,
-        "customer_id": customer_id,
+
+    return {
+        "escalated": True,
+        "pnr": pnr,
         "reason": reason,
-        "metadata": metadata or "Triggered by resolution engine rule",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "status": "OPEN",
-        "priority": "HIGH"
+        "status": "human_review_required"
     }
-    ESCALATION_QUEUE.append(ticket)
-    return ticket
-
-def get_open_escalations() -> List[Dict[str, Any]]:
-    return [e for e in ESCALATION_QUEUE if e["status"] == "OPEN"]

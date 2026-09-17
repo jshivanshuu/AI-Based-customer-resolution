@@ -1,29 +1,51 @@
-import uuid
-from typing import Dict, Any
+from langchain_core.tools import tool
 
-def execute_refund(booking_id: str, amount: float, reason: str) -> Dict[str, Any]:
-    """
-    Executes refund processing to customer payment method.
-    """
-    transaction_id = f"TX-REF-{uuid.uuid4().hex[:8].upper()}"
-    return {
-        "status": "SUCCESS",
-        "transaction_id": transaction_id,
-        "booking_id": booking_id,
-        "refund_amount": amount,
-        "message": f"Refund of ${amount:.2f} successfully processed under transaction {transaction_id}."
-    }
 
-def issue_gesture_voucher(customer_id: str, amount: float, validity_days: int = 365) -> Dict[str, Any]:
+@tool
+def execute_action(
+    action: str,
+    pnr: str
+):
     """
-    Issues compensation/loyalty voucher code.
+    Execute an authorized airline customer-service action.
     """
-    voucher_code = f"VOUCH-{uuid.uuid4().hex[:6].upper()}"
+
+    if action == "refund":
+        return {
+            "success": True,
+            "action": "refund",
+            "message": "Refund request initiated."
+        }
+
+    if action == "rebook":
+        return {
+            "success": True,
+            "action": "rebook",
+            "message": "Rebooking request initiated."
+        }
+
+    if action == "meal_voucher":
+        return {
+            "success": True,
+            "action": "meal_voucher",
+            "message": "₹500 meal voucher issued."
+        }
+
+    if action == "lounge_access":
+        return {
+            "success": True,
+            "action": "lounge_access",
+            "message": "Lounge access arranged."
+        }
+
+    if action == "hotel":
+        return {
+            "success": True,
+            "action": "hotel",
+            "message": "Hotel accommodation arranged for the eligible delayed-hours period."
+        }
+
     return {
-        "status": "ISSUED",
-        "voucher_code": voucher_code,
-        "customer_id": customer_id,
-        "amount": amount,
-        "validity_days": validity_days,
-        "message": f"Issued gesture voucher {voucher_code} worth ${amount:.2f} valid for {validity_days} days."
+        "success": False,
+        "message": "Unknown or unauthorized action."
     }

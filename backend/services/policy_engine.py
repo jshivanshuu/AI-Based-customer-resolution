@@ -1,57 +1,208 @@
-from typing import Dict, Any, Optional
+def get_cancellation_policy():
+    return {
+        "free_rebooking": True,
+        "rebooking_window_hours": 24,
+        "full_refund": True,
+        "refund_processing_days": 7,
+        "refund_payment_method": "original_payment_method"
+    }
 
-class PolicyEngine:
-    """
-    Deterministic rules engine evaluating refund eligibility, cancellation fees,
-    and automatic compensation vouchers based on service disruption parameters.
-    """
 
-    @staticmethod
-    def evaluate_cancellation_policy(booking: Dict[str, Any], customer_tier: str) -> Dict[str, Any]:
-        amount = float(booking.get("amount", 0.0))
-        status = booking.get("status", "")
-        delay_hours = float(booking.get("delay_hours", 0.0))
-        is_refundable = booking.get("refundable", True)
+def get_delay_policy(delay_hours):
+    if delay_hours < 3:
+        return {
+            "meal_voucher": True,
+            "meal_voucher_amount": 500,
+            "lounge_access": False,
+            "hotel": False
+        }
 
-        # Base calculations
-        cancellation_fee = float(booking.get("cancellation_fee", 0.0))
-        refund_amount = 0.0
-        voucher_amount = 0.0
-        escalation_required = False
-        reasons = []
+    elif delay_hours > 3 and delay_hours <= 5:
+        return {
+            "meal_voucher": True,
+            "meal_voucher_amount": 500,
+            "lounge_access": True,
+            "hotel": False
+        }
 
-        # Tier benefits
-        if customer_tier.lower() in ["platinum", "gold"]:
-            cancellation_fee = 0.0
-            reasons.append(f"Waived cancellation fee for {customer_tier} tier member.")
+    elif delay_hours > 5:
+        return {
+            "meal_voucher": True,
+            "meal_voucher_amount": 500,
+            "hotel": True,
+            "hotel_scope": "delayed_hours_only"
+        }
 
-        # Flight delay compensation rules
-        if status == "Cancelled" or delay_hours >= 4.0:
-            refund_amount = amount
-            cancellation_fee = 0.0
-            if delay_hours >= 4.0:
-                voucher_amount = 150.0 if customer_tier.lower() == "platinum" else 100.0
-                reasons.append(f"Flight delayed by {delay_hours} hours. Full refund eligible + ${voucher_amount} compensation voucher.")
-            elif status == "Cancelled":
-                voucher_amount = 200.0
-                reasons.append("Airline cancelled flight. Full refund eligible + $200 delay compensation voucher.")
-        elif is_refundable:
-            refund_amount = max(0.0, amount - cancellation_fee)
-            reasons.append(f"Standard refund calculation: ${amount} minus ${cancellation_fee} fee.")
-        else:
-            refund_amount = 0.0
-            reasons.append("Non-refundable booking according to standard terms.")
+    return {
+        "policy_status": "not_explicitly_defined"
+    }
 
-        # Escalation guardrail for large amounts
-        if amount > 3000.0:
-            escalation_required = True
-            reasons.append("Booking amount exceeds automatic resolution threshold ($3,000). Escalation to human supervisor mandatory.")
+
+def check_fare_difference(amount):
+    if amount > 1500:
+        return {
+            "allowed": False,
+            "escalation_required": True,
+            "reason": "Fare difference above ₹1,500 requires supervisor approval"
+        }
+
+    return {
+        "allowed": True,
+        "escalation_required": False
+    }
+
+
+def get_loyalty_policy(loyalty_tier):
+    if loyalty_tier in ["Gold", "Platinum"]:
+        return {
+            "priority_rebooking": True,
+            "additional_compensation": False
+        }
+
+    return {
+        "priority_rebooking": False,
+        "additional_compensation": False
+    }
+
+
+def resolve_policy(
+    intent,
+    customer,
+    bookings,
+    fare_difference=0
+):
+
+    # --------------------------------
+    # Cancellation refund
+    # --------------------------------
+
+    if intent == "cancellation_refund":
+
+        cancelled_booking = None
+
+        for booking in bookings:
+            if booking.get("status", "").lower() == "cancelled":
+                cancelled_booking = booking
+                break
+
+        if cancelled_booking is None:
+            return {
+                "allowed": False,
+                "reason": "Booking is not cancelled"
+            }
+
+        policy = get_cancellation_policy()
 
         return {
-            "eligible_for_refund": refund_amount > 0,
-            "refund_amount": refund_amount,
-            "cancellation_fee": cancellation_fee,
-            "voucher_amount": voucher_amount,
-            "escalation_required": escalation_required,
-            "policy_summary": " | ".join(reasons)
+            "allowed": True,
+            "action": "refund",
+            "refund_amount": "full",
+            "processing_time": f"{policy['refund_processing_days']} business days",
+            "payment_method": policy["refund_payment_method"],
+            "escalation_required": False
         }
+
+    # --------------------------------
+    # Cancellation rebooking
+    # --------------------------------
+
+    if intent == "cancellation_rebooking":
+
+        cancelled_booking = None
+
+        for booking in bookings:
+            if booking.get("status", "").lower() == "cancelled":
+                cancelled_booking = booking
+                break
+
+        if cancelled_booking is None:
+            return {
+                "allowed": False,
+                "reason": "Booking is not cancelled"
+            }
+
+        return {
+            "allowed": True,
+            "action": "free_rebooking",
+            "window_hours": 24,
+            "escalation_required": False
+        }
+
+    # --------------------------------
+    # Delay compensation
+    # --------------------------------
+
+    if intent == "delay_compensation":
+
+        delayed_booking = None
+
+        for booking in bookings:
+            if booking.get("status", "").lower() == "delayed":
+                delayed_booking = booking
+                break
+
+        if delayed_booking is None:
+            return {
+                "allowed": False,
+                "reason": "Booking is not delayed"
+            }
+
+        delay_hours = delayed_booking["delay_hours"]
+
+        policy = get_delay_policy(delay_hours)
+
+        return {
+            "allowed": True,
+            "action": "delay_entitlements",
+            "delay_hours": delay_hours,
+            "policy": policy,
+            "escalation_required": False
+        }
+
+    # --------------------------------
+    # Higher fare rebooking
+    # --------------------------------
+
+    if intent == "higher_fare_rebooking":
+
+        return {
+            "allowed": check_fare_difference(
+                fare_difference
+            )["allowed"],
+            "fare_difference": fare_difference,
+            **check_fare_difference(fare_difference)
+        }
+
+    # --------------------------------
+    # Business class upgrade
+    # --------------------------------
+
+    if intent == "business_upgrade":
+
+        return {
+            "allowed": False,
+            "escalation_required": True,
+            "reason": "Business-class upgrade is not covered by the supplied policy"
+        }
+
+    # --------------------------------
+    # Legal complaint
+    # --------------------------------
+
+    if intent == "legal_complaint":
+
+        return {
+            "allowed": False,
+            "escalation_required": True,
+            "reason": "Legal action or formal complaint requires human support"
+        }
+
+    # --------------------------------
+    # Unknown request
+    # --------------------------------
+
+    return {
+        "allowed": False,
+        "escalation_required": True,
+        "reason": "Request is not covered by the supplied policy"
+    }
